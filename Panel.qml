@@ -12,6 +12,8 @@ Panel {
     moduleName: "ianzano.workflows"
     ipcTarget: moduleName
     property var workflows: []
+    property var groups: []
+    readonly property var sections: workflowSections()
     property var outputs: Object.create(null)
     property var runs: Object.create(null)
     property var jobs: Object.create(null)
@@ -26,6 +28,17 @@ Panel {
     implicitHeight: button.implicitHeight
     Commons.Translations { id: strings; directory: Qt.resolvedUrl("i18n") }
 
+    function workflowSections() {
+        var result = []
+        var ungrouped = workflows.filter(item => !item.group)
+        if (ungrouped.length) result.push({group: null, items: ungrouped})
+        for (var i = 0; i < groups.length; i++) {
+            var group = groups[i]
+            var items = workflows.filter(item => item.group === group.id)
+            if (items.length) result.push({group: group, items: items})
+        }
+        return result
+    }
     function state(key) { return outputs[key] || {text: "", status: "idle", expanded: false, shown: true, started: 0} }
     function update(key, patch) {
         var next = Object.assign(Object.create(null), outputs)
@@ -77,6 +90,7 @@ Panel {
                     var data = JSON.parse(text)
                     root.warning = data.ok ? "" : data.message
                     if (data.ok) {
+                        root.groups = data.groups || []
                         root.workflows = data.workflows
                         if (inventory.generation === root.runGeneration) {
                             for (var i = 0; i < data.workflows.length; i++) {
@@ -205,162 +219,213 @@ Panel {
                 Label { width: parent.width; visible: !!root.warning; text: root.warning; color: Commons.Color.urgent }
                 Label { width: parent.width; visible: !root.workflows.length && !root.warning; text: strings.t("empty"); opacity: 0.6 }
                 Repeater {
-                    model: root.workflows
-                    delegate: Rectangle {
-                        id: card
+                    model: root.sections
+                    delegate: Column {
+                        id: section
                         required property var modelData
-                        readonly property var output: root.state(modelData.id)
-                        readonly property var lastRun: root.runs[modelData.id] || null
-                        readonly property string runStatus: busy ? "running" : lastRun && lastRun.startedAt > output.started ? lastRun.status : output.status
-                        readonly property bool running: runStatus === "running"
-                        readonly property bool busy: !!root.jobs[modelData.id]
-                        readonly property bool failed: ["failed", "timeout", "interrupted"].indexOf(runStatus) >= 0
-                        readonly property color statusColor: failed ? Commons.Color.urgent : runStatus === "completed" ? root.success : Commons.Color.accent
                         width: content.width
-                        implicitHeight: details.implicitHeight + Style.space(24)
-                        radius: Style.space(8)
-                        color: Util.alpha(card.statusColor, 0.045)
-                        border.width: 1
-                        border.color: Util.alpha(card.statusColor, 0.18)
-                        Column {
-                            id: details
-                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(12) }
+                        spacing: Style.space(8)
+                        RowLayout {
+                            objectName: section.modelData.group ? "group-" + section.modelData.group.id : "ungrouped-header"
+                            width: parent.width
+                            visible: !!section.modelData.group
                             spacing: Style.space(8)
-                            RowLayout {
-                                width: parent.width
-                                spacing: Style.space(8)
-                                Label {
-                                    text: "󰔟"; visible: card.running; color: card.statusColor
-                                    RotationAnimation on rotation {
-                                        from: 0; to: 360; loops: Animation.Infinite
-                                        duration: Style.duration(900)
-                                        running: card.running && !Style.reduceMotion
-                                    }
-                                }
-                                Label { text: card.modelData.name; font.bold: true; Layout.fillWidth: true }
-                                Label {
-                                    objectName: "status-" + card.modelData.id
-                                    text: card.running ? strings.t("running").arg(Commons.I18n.formatNumber(Math.max(0, Math.floor((root.now - (card.lastRun ? card.lastRun.startedAt : card.output.started)) / 1000)))) : strings.t(card.runStatus)
-                                    color: card.statusColor
-                                    font.pixelSize: Style.font.caption
-                                }
-                            }
-                            GridLayout {
-                                id: metadata
-                                width: parent.width
-                                columns: width >= Style.space(460) ? 2 : 1
-                                columnSpacing: Style.space(12)
-                                rowSpacing: Style.space(4)
-                                Column {
-                                    Layout.fillWidth: true
-                                    Layout.minimumWidth: 0
-                                    Layout.alignment: Qt.AlignTop
-                                    Layout.preferredWidth: metadata.columns === 2 ? metadata.width * 0.46 : metadata.width
-                                    spacing: Style.space(3)
-                                    Label {
-                                        width: parent.width
-                                        visible: !!card.modelData.description
-                                        text: card.modelData.description || ""
-                                        opacity: 0.65
-                                        font.pixelSize: Style.font.caption
-                                    }
-                                    Label {
-                                        width: parent.width
-                                        text: (card.modelData.host || "localhost") + (card.modelData.cwd ? " · " + card.modelData.cwd : "")
-                                        opacity: 0.5
-                                        font.pixelSize: Style.font.caption
-                                    }
-                                }
-                                Column {
-                                    Layout.fillWidth: true
-                                    Layout.minimumWidth: 0
-                                    Layout.alignment: Qt.AlignTop
-                                    Layout.preferredWidth: metadata.columns === 2 ? metadata.width * 0.54 : metadata.width
-                                    spacing: Style.space(3)
-                                    Label {
-                                        width: parent.width
-                                        visible: !card.lastRun && !card.busy
-                                        text: strings.t("noLastRun")
-                                        horizontalAlignment: metadata.columns === 2 ? Text.AlignRight : Text.AlignLeft
-                                        font.pixelSize: Style.font.caption
-                                        opacity: 0.45
-                                    }
-                                    Label {
-                                        objectName: "started-" + card.modelData.id
-                                        width: parent.width
-                                        visible: !!card.lastRun
-                                        text: card.lastRun ? strings.t("startedAt").arg(root.formatTime(card.lastRun.startedAt)) : ""
-                                        horizontalAlignment: metadata.columns === 2 ? Text.AlignRight : Text.AlignLeft
-                                        font.pixelSize: Style.font.caption
-                                        opacity: 0.6
-                                    }
-                                    Label {
-                                        objectName: "finished-" + card.modelData.id
-                                        width: parent.width
-                                        visible: !!card.lastRun
-                                        text: !card.lastRun ? "" : card.lastRun.completedAt
-                                            ? strings.t("finishedAt").arg(root.formatTime(card.lastRun.completedAt))
-                                            : strings.t(card.lastRun.status === "running" ? "finishPending" : "finishUnknown")
-                                        horizontalAlignment: metadata.columns === 2 ? Text.AlignRight : Text.AlignLeft
-                                        font.pixelSize: Style.font.caption
-                                        opacity: 0.6
-                                    }
-                                }
-                            }
                             Label {
-                                width: parent.width
-                                visible: !!card.output.notice
-                                text: card.output.notice || ""
-                                font.pixelSize: Style.font.caption
-                                color: Commons.Color.urgent
+                                objectName: section.modelData.group ? "group-icon-" + section.modelData.group.id : ""
+                                visible: !!section.modelData.group && !!section.modelData.group.icon
+                                text: section.modelData.group ? section.modelData.group.icon || "" : ""
+                                color: Commons.Color.accent
+                                font.pixelSize: Style.space(20)
+                                Layout.alignment: Qt.AlignTop
                             }
-                            RowLayout {
-                                width: parent.width
-                                spacing: Style.space(6)
-                                ColoredAction { objectName: "run-" + card.modelData.id; text: strings.t("run"); iconText: ""; foreground: root.success; enabled: !card.running; onClicked: root.run(card.modelData.id) }
-                                ColoredAction { objectName: "stop-" + card.modelData.id; text: strings.t("stop"); iconText: ""; foreground: Commons.Color.urgent; visible: card.busy; onClicked: root.stop(card.modelData.id) }
-                                Item { Layout.fillWidth: true }
-                                IconAction {
-                                    objectName: "toggleConsole-" + card.modelData.id
-                                    iconText: card.output.shown ? "󰅀" : "󰅃"
-                                    tooltipText: strings.t(card.output.shown ? "hide" : "show")
-                                    visible: card.output.status !== "idle"
-                                    onClicked: root.update(card.modelData.id, {shown: !card.output.shown})
+                            ColumnLayout {
+                                spacing: Style.space(3)
+                                Layout.fillWidth: true
+                                Label {
+                                    objectName: section.modelData.group ? "group-title-" + section.modelData.group.id : ""
+                                    text: section.modelData.group ? section.modelData.group.title : ""
+                                    font.bold: true
+                                    Layout.fillWidth: true
                                 }
-                            }
-                            Column {
-                                width: parent.width
-                                spacing: Style.space(6)
-                                visible: card.output.status !== "idle" && card.output.shown
-                                Rectangle {
-                                    width: parent.width
-                                    implicitHeight: consoleText.implicitHeight + Style.space(16)
-                                    radius: Style.space(6)
-                                    color: Util.alpha(Commons.Color.background, 0.65)
-                                    Controls.TextArea {
-                                        id: consoleText
-                                        objectName: "output-" + card.modelData.id
-                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(8) }
-                                        padding: 0
-                                        text: card.output.text ? (card.output.expanded ? card.output.text : root.preview(card.output.text)) : strings.t(card.busy ? "waiting" : "noOutput")
-                                        readOnly: true
-                                        selectByMouse: true
-                                        textFormat: TextEdit.PlainText
-                                        wrapMode: TextEdit.Wrap
-                                        font.family: "monospace"
-                                        font.pixelSize: Style.font.caption
-                                        color: card.failed ? Commons.Color.urgent : Commons.Color.foreground
-                                        background: null
-                                    }
-                                }
-                                RowLayout {
-                                    width: parent.width
-                                    Label { text: strings.t(card.output.expanded ? "full" : "latest"); opacity: 0.45; font.pixelSize: Style.font.caption; Layout.fillWidth: true }
-                                    Action { text: strings.t(card.output.expanded ? "less" : "more"); onClicked: root.update(card.modelData.id, {expanded: !card.output.expanded}) }
+                                Label {
+                                    objectName: section.modelData.group ? "group-description-" + section.modelData.group.id : ""
+                                    visible: !!section.modelData.group && !!section.modelData.group.description
+                                    text: section.modelData.group ? section.modelData.group.description || "" : ""
+                                    opacity: 0.6
+                                    font.pixelSize: Style.font.caption
+                                    Layout.fillWidth: true
                                 }
                             }
                         }
+                        Repeater {
+                            model: section.modelData.items
+                            delegate: WorkflowCard {}
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    component WorkflowCard: Rectangle {
+        id: card
+        required property var modelData
+        readonly property var output: root.state(modelData.id)
+        readonly property var lastRun: root.runs[modelData.id] || null
+        readonly property string runStatus: busy ? "running" : lastRun && lastRun.startedAt > output.started ? lastRun.status : output.status
+        readonly property bool running: runStatus === "running"
+        readonly property bool busy: !!root.jobs[modelData.id]
+        readonly property bool failed: ["failed", "timeout", "interrupted"].indexOf(runStatus) >= 0
+        readonly property color statusColor: failed ? Commons.Color.urgent : runStatus === "completed" ? root.success : Commons.Color.accent
+        width: parent.width
+        implicitHeight: details.implicitHeight + Style.space(24)
+        radius: Style.space(8)
+        color: Util.alpha(card.statusColor, 0.045)
+        border.width: 1
+        border.color: Util.alpha(card.statusColor, 0.18)
+        Column {
+            id: details
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(12) }
+            spacing: Style.space(8)
+            RowLayout {
+                width: parent.width
+                spacing: Style.space(8)
+                Label {
+                    text: "󰔟"; visible: card.running; color: card.statusColor
+                    RotationAnimation on rotation {
+                        from: 0; to: 360; loops: Animation.Infinite
+                        duration: Style.duration(900)
+                        running: card.running && !Style.reduceMotion
+                    }
+                }
+                Label {
+                    objectName: "workflow-icon-" + card.modelData.id
+                    visible: !!card.modelData.icon
+                    text: card.modelData.icon || ""
+                    color: Commons.Color.accent
+                    font.pixelSize: Style.space(18)
+                    Layout.alignment: Qt.AlignVCenter
+                }
+                Label { text: card.modelData.name; font.bold: true; Layout.fillWidth: true }
+                Label {
+                    objectName: "status-" + card.modelData.id
+                    text: card.running ? strings.t("running").arg(Commons.I18n.formatNumber(Math.max(0, Math.floor((root.now - (card.lastRun ? card.lastRun.startedAt : card.output.started)) / 1000)))) : strings.t(card.runStatus)
+                    color: card.statusColor
+                    font.pixelSize: Style.font.caption
+                }
+            }
+            GridLayout {
+                id: metadata
+                width: parent.width
+                columns: width >= Style.space(460) ? 2 : 1
+                columnSpacing: Style.space(12)
+                rowSpacing: Style.space(4)
+                Column {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: metadata.columns === 2 ? metadata.width * 0.46 : metadata.width
+                    spacing: Style.space(3)
+                    Label {
+                        width: parent.width
+                        visible: !!card.modelData.description
+                        text: card.modelData.description || ""
+                        opacity: 0.65
+                        font.pixelSize: Style.font.caption
+                    }
+                    Label {
+                        width: parent.width
+                        text: (card.modelData.host || "localhost") + (card.modelData.cwd ? " · " + card.modelData.cwd : "")
+                        opacity: 0.5
+                        font.pixelSize: Style.font.caption
+                    }
+                }
+                Column {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: metadata.columns === 2 ? metadata.width * 0.54 : metadata.width
+                    spacing: Style.space(3)
+                    Label {
+                        width: parent.width
+                        visible: !card.lastRun && !card.busy
+                        text: strings.t("noLastRun")
+                        horizontalAlignment: metadata.columns === 2 ? Text.AlignRight : Text.AlignLeft
+                        font.pixelSize: Style.font.caption
+                        opacity: 0.45
+                    }
+                    Label {
+                        objectName: "started-" + card.modelData.id
+                        width: parent.width
+                        visible: !!card.lastRun
+                        text: card.lastRun ? strings.t("startedAt").arg(root.formatTime(card.lastRun.startedAt)) : ""
+                        horizontalAlignment: metadata.columns === 2 ? Text.AlignRight : Text.AlignLeft
+                        font.pixelSize: Style.font.caption
+                        opacity: 0.6
+                    }
+                    Label {
+                        objectName: "finished-" + card.modelData.id
+                        width: parent.width
+                        visible: !!card.lastRun
+                        text: !card.lastRun ? "" : card.lastRun.completedAt
+                            ? strings.t("finishedAt").arg(root.formatTime(card.lastRun.completedAt))
+                            : strings.t(card.lastRun.status === "running" ? "finishPending" : "finishUnknown")
+                        horizontalAlignment: metadata.columns === 2 ? Text.AlignRight : Text.AlignLeft
+                        font.pixelSize: Style.font.caption
+                        opacity: 0.6
+                    }
+                }
+            }
+            Label {
+                width: parent.width
+                visible: !!card.output.notice
+                text: card.output.notice || ""
+                font.pixelSize: Style.font.caption
+                color: Commons.Color.urgent
+            }
+            RowLayout {
+                width: parent.width
+                spacing: Style.space(6)
+                ColoredAction { objectName: "run-" + card.modelData.id; text: strings.t("run"); iconText: ""; foreground: root.success; enabled: !card.running; onClicked: root.run(card.modelData.id) }
+                ColoredAction { objectName: "stop-" + card.modelData.id; text: strings.t("stop"); iconText: ""; foreground: Commons.Color.urgent; visible: card.busy; onClicked: root.stop(card.modelData.id) }
+                Item { Layout.fillWidth: true }
+                IconAction {
+                    objectName: "toggleConsole-" + card.modelData.id
+                    iconText: card.output.shown ? "󰅀" : "󰅃"
+                    tooltipText: strings.t(card.output.shown ? "hide" : "show")
+                    visible: card.output.status !== "idle"
+                    onClicked: root.update(card.modelData.id, {shown: !card.output.shown})
+                }
+            }
+            Column {
+                width: parent.width
+                spacing: Style.space(6)
+                visible: card.output.status !== "idle" && card.output.shown
+                Rectangle {
+                    width: parent.width
+                    implicitHeight: consoleText.implicitHeight + Style.space(16)
+                    radius: Style.space(6)
+                    color: Util.alpha(Commons.Color.background, 0.65)
+                    Controls.TextArea {
+                        id: consoleText
+                        objectName: "output-" + card.modelData.id
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.space(8) }
+                        padding: 0
+                        text: card.output.text ? (card.output.expanded ? card.output.text : root.preview(card.output.text)) : strings.t(card.busy ? "waiting" : "noOutput")
+                        readOnly: true
+                        selectByMouse: true
+                        textFormat: TextEdit.PlainText
+                        wrapMode: TextEdit.Wrap
+                        font.family: "monospace"
+                        font.pixelSize: Style.font.caption
+                        color: card.failed ? Commons.Color.urgent : Commons.Color.foreground
+                        background: null
+                    }
+                }
+                RowLayout {
+                    width: parent.width
+                    Label { text: strings.t(card.output.expanded ? "full" : "latest"); opacity: 0.45; font.pixelSize: Style.font.caption; Layout.fillWidth: true }
+                    Action { text: strings.t(card.output.expanded ? "less" : "more"); onClicked: root.update(card.modelData.id, {expanded: !card.output.expanded}) }
                 }
             }
         }

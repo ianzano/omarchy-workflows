@@ -63,10 +63,11 @@ ShellRoot {
             x: 20; y: 20
             source: "plugin/Panel.qml"
             onLoaded: {
+                item.groups = [{id:"shopware", title:"Shopware", description:"Storefront builds and preview deployments", icon:"󰒓"}]
                 item.workflows = [
-                    {id:"stage", name:"Build storefront", description:"Compile assets on the staging server", host:"shop-stage", cwd:"/var/www/shopware"},
-                    {id:"test", name:"Run test suite", description:"Check the current project before pushing", cwd:"~/Work/storefront"},
-                    {id:"deploy", name:"Deploy preview", description:"Publish the preview environment", host:"shop-preview", cwd:"/var/www/shopware"}
+                    {id:"stage", group:"shopware", icon:"󰏗", name:"Build storefront", description:"Compile assets on the staging server", host:"shop-stage", cwd:"/var/www/shopware"},
+                    {id:"test", icon:"󰙨", name:"Run test suite", description:"Check the current project before pushing", cwd:"~/Work/storefront"},
+                    {id:"deploy", group:"shopware", icon:"󰐕", name:"Deploy preview", description:"Publish the preview environment", host:"shop-preview", cwd:"/var/www/shopware"}
                 ]
                 item.update("stage", {status:"completed", text:"[1/1] $ sudo -n -u deploy bin/build-storefront.sh\\nBuilding storefront assets…\\n✓ 248 modules transformed\\n✓ storefront.js    184.2 kB\\n✓ storefront.css    32.1 kB\\nBuild completed in 8.4s"})
                 item.update("test", {status:"failed", expanded:true, text:"[1/1] $ npm test\\nTests: 42 passed, 1 failed\\nFAIL checkout › applies discount code\\nExpected 89.00, received 99.00\\nFailed (exit 1)"})

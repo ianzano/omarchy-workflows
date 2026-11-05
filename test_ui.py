@@ -28,9 +28,12 @@ def main():
         (root / 'plugin/Panel.qml').write_text(source)
         config = root / 'config/omarchy'
         config.mkdir(parents=True)
-        (config / 'workflows.json').write_text(json.dumps(dict(version=1, workflows=[
-            dict(notifications=False, id='good', name='<img src="https://example.invalid/tracker">', steps=['printf \'<b>early</b>\\n\'; sleep 0.5; printf done']),
-            dict(notifications=False, id='bad', name='Failure', steps=['echo broken >&2; exit 9']),
+        (config / 'workflows.json').write_text(json.dumps(dict(version=1, groups=[
+            dict(id='tools', title='<b>Tools</b>', description='<img src="https://example.invalid/tracker">', icon='🛠'),
+            dict(id='empty', title='Hidden empty group')
+        ], workflows=[
+            dict(notifications=False, id='good', group='tools', icon='󰏗', name='<img src="https://example.invalid/tracker">', steps=['printf \'<b>early</b>\\n\'; sleep 0.5; printf done']),
+            dict(notifications=False, id='bad', group='tools', icon='<img src=x>', name='Failure', steps=['echo broken >&2; exit 9']),
             dict(notifications=False, id='slow', name='Stop me', steps=['echo started; sleep 60'])
         ])))
         (root / 'shell.qml').write_text('''
@@ -53,6 +56,13 @@ def main():
                 if (!p || p.workflows.length !== 3) return
                 if (p.warning) throw new Error(p.warning)
                 if (test.stage === 0) {
+                    if (p.sections.length !== 2 || p.sections[0].group !== null || p.sections[0].items[0].id !== "slow") throw new Error("standalone workflows")
+                    if (p.sections[1].group.id !== "tools" || p.sections[1].items.length !== 2) throw new Error("group membership")
+                    if (p.testFind("group-empty")) throw new Error("empty group displayed")
+                    if (p.testFind("group-title-tools").text !== "<b>Tools</b>" || p.testFind("group-title-tools").textFormat !== Text.PlainText) throw new Error("unsafe group title")
+                    if (p.testFind("group-description-tools").textFormat !== Text.PlainText || p.testFind("group-icon-tools").text !== "🛠") throw new Error("group metadata")
+                    if (p.testFind("workflow-icon-bad").text !== "<img src=x>" || p.testFind("workflow-icon-bad").textFormat !== Text.PlainText) throw new Error("unsafe workflow icon")
+                    if (p.testFind("workflow-icon-slow").text !== "") throw new Error("optional workflow icon")
                     var consoleItem = p.testFind("output-good")
                     if (consoleItem.textFormat !== TextEdit.PlainText) throw new Error("unsafe output format")
                     p.testFind("run-good").clicked()
@@ -111,7 +121,7 @@ def main():
         output = result.stdout + result.stderr
         if result.returncode or 'WORKFLOWS_UI_PASSED' not in output or 'WARN scene:' in output:
             raise SystemExit(output)
-        print('Quickshell passed: concurrent runs, streaming, literal markup, failure expansion, stop, six-line preview, start/finish timestamps and summary recovery after reload.')
+        print('Quickshell passed: optional groups/icons, literal group markup, concurrent runs, streaming, literal markup, failure expansion, stop, six-line preview, start/finish timestamps and summary recovery after reload.')
 
 
 if __name__ == "__main__":

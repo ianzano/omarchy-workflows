@@ -1,6 +1,6 @@
 # Workflows for Omarchy
 
-A native bar plugin for one-click local and SSH workflows. Its cards, Run buttons and inline console follow the DDEV plugin's design and your current Omarchy theme.
+A native bar plugin for one-click local and SSH workflows, with optional groups and icons. Its cards, Run buttons and inline console follow the DDEV plugin's design and your current Omarchy theme.
 
 ![Workflow cards with successful and failed output](preview.png)
 
@@ -59,10 +59,20 @@ Example SSH build and local checks:
 ```json
 {
   "version": 1,
+  "groups": [
+    {
+      "id": "shopware",
+      "title": "Shopware",
+      "description": "Storefront builds and maintenance",
+      "icon": "󰒓"
+    }
+  ],
   "workflows": [
     {
       "id": "build-stage",
       "name": "Run build on stage",
+      "group": "shopware",
+      "icon": "󰏗",
       "description": "Build the Shopware storefront as deploy",
       "host": "shop-stage",
       "cwd": "/var/www/shopware",
@@ -74,6 +84,7 @@ Example SSH build and local checks:
     {
       "id": "local-checks",
       "name": "Run local checks",
+      "icon": "󰙨",
       "cwd": "/home/you/projects/storefront",
       "steps": [
         ["npm", "run", "lint"],
@@ -86,11 +97,15 @@ Example SSH build and local checks:
 
 - `id`: stable, unique identifier using letters, numbers, underscores or dashes; starts with a letter or number.
 - `name`: card title. `description` is optional.
+- `group`: optional group ID from the top-level `groups` array. Omit it or use `null` for a standalone workflow.
+- `icon`: optional Nerd Font glyph or emoji shown beside the workflow name. Icons are literal text, up to 16 characters; image paths and URLs are not loaded.
 - `host`: optional SSH alias or `user@hostname`. Omit for local execution. Configure ports, keys, jump hosts and usernames in `~/.ssh/config`.
 - `cwd`: working directory, on the remote machine when `host` is present. Use an absolute path; `~` and environment variables in this field are literal.
 - `steps`: ordered commands. Argument arrays pass arguments literally; strings support shell syntax through `sh -ec`. Execution stops on a failed step. Each step gets a separate shell in the configured directory, so shell variables and `cd` do not carry across steps. Use one string or a script when you need shared shell state. Shell failure semantics apply to pipelines; use an explicit Bash script with `set -euo pipefail` when needed.
 - `notifications`: optional boolean; defaults to `true`.
 - `timeout`: optional integer in seconds, 1–86400; defaults to 1800.
+
+Groups are optional. Define each group once with a unique `id`, a required `title`, and optional `description` and `icon`. Assign workflows with `"group": "shopware"`; the local checks above remain ungrouped. Standalone workflows appear first without a group heading, followed by nonempty groups in their configured order. Workflow order is preserved within each section. Empty groups are hidden, and unknown group references produce a config error. Existing configs without groups or icons continue to work unchanged. Group metadata does not change execution, locking, notifications or run history.
 
 The stage command runs over SSH, changes to `/var/www/shopware`, then runs `sudo -n -u deploy bin/build-storefront.sh`. `-n` makes sudo fail visibly if it needs a password. Set up SSH key/agent authentication and permission to run the build as deploy beforehand. SSH uses batch mode and a ten-second connection timeout; first-time host trust must be established through your terminal. The panel does not accept interactive password prompts. Your normal desktop SSH environment is inherited.
 
@@ -104,13 +119,13 @@ Workflow files contain trusted executable code. Commands run with your account's
 python3 backend.py check
 python3 backend.py run build-stage
 omarchy plugin validate .
-python3 -m unittest -v test_backend test_history test_notifications
+python3 -m unittest -v test_backend test_history test_notifications test_groups
 dbus-run-session -- python3 tests/notifications_bus.py
 python3 test_ui.py
 python3 tools/render_preview.py
 ```
 
-`backend.py run` executes the selected workflow, so use it intentionally. Automated tests use temporary local commands and simulated SSH shell strings, never your configured server. Backend checks cover literal arguments, SSH quoting, failure propagation, streaming, timeout, cancellation, process cleanup, duplicate-run locking and malformed config. The UI test loads the real plugin and runner through Quickshell in the desktop Wayland session, checking concurrency, literal markup display, status, Stop, and expanded output. History checks cover saved timestamps/status, independent concurrent records, interruption recovery, private storage and notification delivery failures. Notification tests inspect escaped markup and urgency; the isolated D-Bus test runs real workflows against a test notification service without alerting the desktop. The UI test also verifies timestamps and status after recreating the panel. The preview renderer uses synthetic data in an isolated offscreen window.
+`backend.py run` executes the selected workflow, so use it intentionally. Automated tests use temporary local commands and simulated SSH shell strings, never your configured server. Backend checks cover literal arguments, SSH quoting, failure propagation, streaming, timeout, cancellation, process cleanup, duplicate-run locking and malformed config. The UI test loads the real plugin and runner through Quickshell in the desktop Wayland session, checking concurrency, literal markup display, status, Stop, and expanded output. Group checks cover legacy configs, optional membership and icons, invalid references, literal metadata, and grouped/ungrouped execution. The UI test checks group headers, hidden empty groups and plain-text icons. History checks cover saved timestamps/status, independent concurrent records, interruption recovery, private storage and notification delivery failures. Notification tests inspect escaped markup and urgency; the isolated D-Bus test runs real workflows against a test notification service without alerting the desktop. The UI test also verifies timestamps and status after recreating the panel. The preview renderer uses synthetic data in an isolated offscreen window.
 
 IPC: `omarchy-shell ianzano.workflows open`, `close`, or `toggle`.
 

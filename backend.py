@@ -34,7 +34,13 @@ def string(value, label, limit=8192):
     return value
 
 
-def load_config(path):
+def validate_icon(value, label):
+    string(value, label, 16)
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError(f'{label} must be a single-line glyph or emoji')
+
+
+def read_config(path):
     with open(path, 'rb') as stream:
         raw = stream.read(MAX_CONFIG + 1)
     if len(raw) > MAX_CONFIG:
@@ -42,20 +48,42 @@ def load_config(path):
     data = json.loads(raw)
     if not isinstance(data, dict) or data.get('version') != 1 or isinstance(data.get('version'), bool):
         raise ValueError('Configuration requires version: 1')
-    if set(data) - {'version', 'workflows'}:
+    if set(data) - {'version', 'groups', 'workflows'}:
         raise ValueError('Unknown configuration field')
+    groups = data.get('groups', [])
+    if not isinstance(groups, list) or len(groups) > 100:
+        raise ValueError('groups must be an array with at most 100 entries')
+    group_ids = set()
+    for group in groups:
+        if not isinstance(group, dict) or set(group) - {'id', 'title', 'description', 'icon'}:
+            raise ValueError('Unknown group field or invalid group object')
+        key = string(group.get('id'), 'group.id', 64)
+        if not ID.fullmatch(key) or key in group_ids:
+            raise ValueError('Group IDs must be unique and use letters, numbers, underscores or dashes')
+        group_ids.add(key)
+        string(group.get('title'), f'group.{key}.title', 160)
+        if 'description' in group:
+            string(group['description'], f'group.{key}.description', 500)
+        if 'icon' in group:
+            validate_icon(group['icon'], f'group.{key}.icon')
     items = data.get('workflows')
     if not isinstance(items, list) or len(items) > 100:
         raise ValueError('workflows must be an array with at most 100 entries')
     seen = set()
     for item in items:
-        if not isinstance(item, dict) or set(item) - {'id', 'name', 'description', 'host', 'cwd', 'steps', 'timeout', 'notifications'}:
+        if not isinstance(item, dict) or set(item) - {'id', 'name', 'description', 'host', 'cwd', 'steps', 'timeout', 'notifications', 'group', 'icon'}:
             raise ValueError('Unknown workflow field or invalid workflow object')
         key = string(item.get('id'), 'id', 64)
         if not ID.fullmatch(key) or key in seen:
             raise ValueError('Workflow IDs must be unique and use letters, numbers, underscores or dashes')
         seen.add(key)
         string(item.get('name'), f'{key}.name', 160)
+        if item.get('group') is not None:
+            reference = string(item['group'], f'{key}.group', 64)
+            if reference not in group_ids:
+                raise ValueError(f'{key}.group refers to an undefined group: {reference}')
+        if 'icon' in item:
+            validate_icon(item['icon'], f'{key}.icon')
         if 'description' in item:
             string(item['description'], f'{key}.description', 500)
         if 'host' in item:
@@ -83,7 +111,12 @@ def load_config(path):
                 string(step[0], 'executable')
             else:
                 string(step, 'step')
-    return items
+    return dict(version=1, workflows=items, groups=groups)
+
+
+def load_config(path):
+    """Keep the flat workflow API used by the installer and existing callers."""
+    return read_config(path)['workflows']
 
 
 def script_for(item):
@@ -279,11 +312,12 @@ def main():
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             emit('result', ok=True)
             return 0
-        items = load_config(args.config)
+        config = read_config(args.config)
+        items = config['workflows']
         if args.action in ('list', 'check'):
             if args.action == 'list':
                 items = [dict(item, lastRun=latest_run(item['id'])) for item in items]
-            emit('result', ok=True, workflows=items, path=str(args.config))
+            emit('result', ok=True, workflows=items, groups=config['groups'], path=str(args.config))
             return 0
         item = next((w for w in items if w['id'] == args.id), None)
         if item is None:

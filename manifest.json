@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ianzano.workflows",
   "name": "Workflows",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "ianzano",
   "description": "One-click local and SSH workflows with live output in the bar panel.",
   "kinds": [

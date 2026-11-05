@@ -17,7 +17,29 @@
           "bin/build-storefront.sh"
         ]
       ],
-      "notifications": true
+      "notifications": true,
+      "group": "shopware",
+      "icon": "󰏗"
+    },
+    {
+      "id": "local-check",
+      "name": "Local check",
+      "description": "An independent workflow without a group",
+      "icon": "✓",
+      "steps": [
+        [
+          "printf",
+          "Workflow runner is ready.\n"
+        ]
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "shopware",
+      "title": "Shopware",
+      "description": "Build and maintain your storefront",
+      "icon": "󰒓"
     }
   ]
 }
