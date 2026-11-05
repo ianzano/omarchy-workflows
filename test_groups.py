@@ -89,5 +89,49 @@ class GroupTests(unittest.TestCase):
         self.assertFalse(marker.exists())
 
 
+class ImageIconTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.config = self.root / 'workflows.json'
+        self.svg = self.root / 'icon with spaces.svg'
+        self.svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M0 0h24v24H0z" fill="#fff"/></svg>')
+
+    def test_local_icon_object_resolves_beside_config_and_encodes_url(self):
+        item = dict(id='group', title='Example', icon={'file': self.svg.name})
+        backend.validate_icon(item['icon'], 'icon')
+        shown = backend.display_icon(item, self.config)
+        self.assertEqual(shown['iconSource'], self.svg.as_uri())
+        self.assertIn('%20', shown['iconSource'])
+        self.assertNotIn('iconSource', item)
+
+    def test_invalid_remote_and_nonimage_paths_rejected(self):
+        for value in ({'file': 'https://example.invalid/icon.png'}, {'file': 'file:///tmp/icon.png'},
+                      {'file': 'icon.txt'}, {'file': ''}, {'file': 'icon.png', 'url': 'x'}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                backend.validate_icon(value, 'icon')
+
+    def test_svg_external_references_and_scripts_rejected(self):
+        for body in ('<image href="https://example.invalid/icon.png"/>', '<use href="other.svg#id"/>',
+                     '<script>bad()</script>', '<path fill="url(https://example.invalid/icon)"/>'):
+            self.svg.write_text('<svg xmlns="http://www.w3.org/2000/svg">' + body + '</svg>')
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                backend.display_icon({'icon': {'file': str(self.svg)}}, self.config)
+
+    def test_internal_svg_references_allowed(self):
+        self.svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g"/></defs><path fill="url(#g)"/></svg>')
+        self.assertEqual(backend.display_icon({'icon': {'file': str(self.svg)}}, self.config)['iconSource'], self.svg.as_uri())
+
+    def test_fifo_and_oversized_icon_rejected_without_blocking(self):
+        fifo = self.root / 'fifo.png'
+        os.mkfifo(fifo)
+        with self.assertRaises(ValueError):
+            backend.display_icon({'icon': {'file': str(fifo)}}, self.config)
+        self.svg.write_bytes(b'x' * 1048577)
+        with self.assertRaises(ValueError):
+            backend.display_icon({'icon': {'file': str(self.svg)}}, self.config)
+
+
 if __name__ == '__main__':
     unittest.main()

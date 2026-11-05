@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 
 from history import RunStore
 from notifications import send_result
@@ -35,9 +36,60 @@ def string(value, label, limit=8192):
 
 
 def validate_icon(value, label):
+    if isinstance(value, dict):
+        if set(value) != {'file'}:
+            raise ValueError(f'{label} image requires exactly one file field')
+        filename = string(value['file'], f'{label}.file', 4096)
+        if re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', filename):
+            raise ValueError(f'{label}.file must be a local path, not a URL')
+        if Path(filename).suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp', '.ico', '.svg'}:
+            raise ValueError(f'{label}.file must be a PNG, JPEG, WebP, ICO or SVG image')
+        return
     string(value, label, 16)
     if any(ord(character) < 32 or ord(character) == 127 for character in value):
         raise ValueError(f'{label} must be a single-line glyph or emoji')
+
+
+def display_icon(item, config):
+    value = item.get('icon')
+    if not isinstance(value, dict):
+        return item
+    filename = Path(value['file']).expanduser()
+    if not filename.is_absolute():
+        filename = config.parent / filename
+    filename = filename.resolve()
+    descriptor = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError('Icon must be a regular local image file')
+        content = stream.read(1048577)
+    if not content or len(content) > 1048576:
+        raise ValueError('Icon files must be nonempty and at most 1 MiB')
+    if filename.suffix.lower() == '.svg':
+        # Local SVG icons must not introduce implicit resource/network requests.
+        allowed = {'svg', 'path', 'g', 'defs', 'linearGradient', 'radialGradient', 'stop',
+                   'circle', 'rect', 'ellipse', 'line', 'polyline', 'polygon', 'title',
+                   'desc', 'clipPath', 'mask', 'use'}
+        if b'<!doctype' in content.lower() or b'<!entity' in content.lower():
+            raise ValueError('SVG icons cannot contain document types or entities')
+        try:
+            tree = ET.fromstring(content)
+        except ET.ParseError as error:
+            raise ValueError('Invalid SVG icon') from error
+        if tree.tag.split('}')[-1] != 'svg':
+            raise ValueError('Invalid SVG icon root')
+        for element in tree.iter():
+            if element.tag.split('}')[-1] not in allowed:
+                raise ValueError('SVG icons must contain only static vector shapes')
+            for attribute, text in element.attrib.items():
+                if attribute.split('}')[-1].lower().startswith('on'):
+                    raise ValueError('SVG icon event handlers are not allowed')
+                if attribute.split('}')[-1] == 'href' and not text.startswith('#'):
+                    raise ValueError('SVG icon references must stay within the icon')
+                for reference in re.findall(r'url\s*\(([^)]*)\)', text, re.I):
+                    if not reference.strip().strip('\'"').startswith('#'):
+                        raise ValueError('SVG icons cannot reference external resources')
+    return dict(item, iconSource=filename.as_uri())
 
 
 def read_config(path):
@@ -316,7 +368,8 @@ def main():
         items = config['workflows']
         if args.action in ('list', 'check'):
             if args.action == 'list':
-                items = [dict(item, lastRun=latest_run(item['id'])) for item in items]
+                items = [dict(display_icon(item, args.config), lastRun=latest_run(item['id'])) for item in items]
+                config['groups'] = [display_icon(group, args.config) for group in config['groups']]
             emit('result', ok=True, workflows=items, groups=config['groups'], path=str(args.config))
             return 0
         item = next((w for w in items if w['id'] == args.id), None)

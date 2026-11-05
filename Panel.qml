@@ -167,6 +167,32 @@ Panel {
         font.pixelSize: Style.font.body
         wrapMode: Text.Wrap
     }
+    component WorkflowIcon: Item {
+        property var value: null
+        property string imageSource: ""
+        property real size: Style.space(20)
+        readonly property string glyph: typeof value === "string" ? value : ""
+        visible: imageSource !== "" || glyph !== ""
+        implicitWidth: size
+        implicitHeight: size
+        Label {
+            objectName: parent.objectName + "-text"
+            anchors.centerIn: parent
+            visible: parent.imageSource === ""
+            text: parent.glyph
+            color: Commons.Color.accent
+            font.pixelSize: parent.size
+        }
+        Image {
+            objectName: parent.objectName + "-image"
+            anchors.fill: parent
+            visible: parent.imageSource !== ""
+            source: parent.imageSource
+            sourceSize: Qt.size(width * 2, height * 2)
+            fillMode: Image.PreserveAspectFit
+            cache: false
+        }
+    }
     component Action: Button {
         focusable: true
         bordered: true
@@ -230,12 +256,10 @@ Panel {
                             width: parent.width
                             visible: !!section.modelData.group
                             spacing: Style.space(8)
-                            Label {
+                            WorkflowIcon {
                                 objectName: section.modelData.group ? "group-icon-" + section.modelData.group.id : ""
-                                visible: !!section.modelData.group && !!section.modelData.group.icon
-                                text: section.modelData.group ? section.modelData.group.icon || "" : ""
-                                color: Commons.Color.accent
-                                font.pixelSize: Style.space(20)
+                                value: section.modelData.group ? section.modelData.group.icon : null
+                                imageSource: section.modelData.group ? section.modelData.group.iconSource || "" : ""
                                 Layout.alignment: Qt.AlignTop
                             }
                             ColumnLayout {
@@ -298,12 +322,11 @@ Panel {
                         running: card.running && !Style.reduceMotion
                     }
                 }
-                Label {
+                WorkflowIcon {
                     objectName: "workflow-icon-" + card.modelData.id
-                    visible: !!card.modelData.icon
-                    text: card.modelData.icon || ""
-                    color: Commons.Color.accent
-                    font.pixelSize: Style.space(18)
+                    value: card.modelData.icon
+                    imageSource: card.modelData.iconSource || ""
+                    size: Style.space(18)
                     Layout.alignment: Qt.AlignVCenter
                 }
                 Label { text: card.modelData.name; font.bold: true; Layout.fillWidth: true }

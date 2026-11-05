@@ -98,7 +98,7 @@ Example SSH build and local checks:
 - `id`: stable, unique identifier using letters, numbers, underscores or dashes; starts with a letter or number.
 - `name`: card title. `description` is optional.
 - `group`: optional group ID from the top-level `groups` array. Omit it or use `null` for a standalone workflow.
-- `icon`: optional Nerd Font glyph or emoji shown beside the workflow name. Icons are literal text, up to 16 characters; image paths and URLs are not loaded.
+- `icon`: optional Nerd Font glyph or emoji shown beside the workflow name. Use literal glyph text (up to 16 characters), or an object such as `{"file": "workflow-icons/project.png"}` for a local image. Relative image paths resolve beside `workflows.json`; absolute paths and `~` also work. PNG, JPEG, WebP, ICO and static SVG images up to 1 MiB are supported. URLs and external SVG resources are rejected; the plugin never downloads icons automatically.
 - `host`: optional SSH alias or `user@hostname`. Omit for local execution. Configure ports, keys, jump hosts and usernames in `~/.ssh/config`.
 - `cwd`: working directory, on the remote machine when `host` is present. Use an absolute path; `~` and environment variables in this field are literal.
 - `steps`: ordered commands. Argument arrays pass arguments literally; strings support shell syntax through `sh -ec`. Execution stops on a failed step. Each step gets a separate shell in the configured directory, so shell variables and `cd` do not carry across steps. Use one string or a script when you need shared shell state. Shell failure semantics apply to pipelines; use an explicit Bash script with `set -euo pipefail` when needed.
