@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "ianzano.workflows",
+  "name": "Workflows",
+  "version": "1.1.0",
+  "author": "ianzano",
+  "description": "One-click local and SSH workflows with live output in the bar panel.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Workflows",
+    "category": "Development",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  },
+  "license": "MIT"
+}

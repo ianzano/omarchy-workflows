@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "id": "build-stage",
+      "name": "Run build on stage",
+      "description": "Build the Shopware storefront as deploy",
+      "host": "shop-stage",
+      "cwd": "/var/www/shopware",
+      "timeout": 1800,
+      "steps": [
+        [
+          "sudo",
+          "-n",
+          "-u",
+          "deploy",
+          "bin/build-storefront.sh"
+        ]
+      ],
+      "notifications": true
+    }
+  ]
+}
